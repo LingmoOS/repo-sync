@@ -103,14 +103,14 @@ jobs:
           )
           declare -A CODENAMES=(
             ["stable"]="lithium"
-            ["testing"]="boron"
+            ["testing"]="carbon"
           )
           ARCHS=("amd64")
           COMPONENT="main"
           PUBLISH_ROOT="${{ env.PUBLISH_ROOT }}"
           GPG_KEY="${{ secrets.GPG_KEY }}"
           SIGN=true
-          WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --timeout=120 -q"
+          WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --connect-timeout=30 --read-timeout=60 --tries=3"
           CONFIGEOF
 
           chmod +x repo-sync/*.sh
@@ -143,6 +143,23 @@ jobs:
       # ======================================================
       # Step 5: 拉取 OBS 仓库
       # ======================================================
+      - name: 测试 OBS 可达性
+        id: connectivity
+        continue-on-error: true
+        run: |
+          echo "::group::测试 OBS 连接"
+          echo "DNS 解析:"
+          host download.opensuse.org 2>/dev/null || true
+          echo ""
+          echo "HTTP HEAD:"
+          curl -sI --connect-timeout 15 \
+            "https://download.opensuse.org/repositories/home:/LingmoOS/Debian_13/" | head -20
+          echo ""
+          echo "wget spider:"
+          wget --spider --timeout=15 \
+            "https://download.opensuse.org/repositories/home:/LingmoOS/Debian_13/" 2>&1 || echo "spider failed"
+          echo "::endgroup::"
+
       - name: 拉取 OBS 仓库（wget）
         id: download
         continue-on-error: true

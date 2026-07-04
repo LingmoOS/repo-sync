@@ -70,7 +70,7 @@ wget_mirror() {
 
         # 回退：使用简单递归下载关键文件
         local fallback_args=(
-            -c -r -np -nH --cut-dirs=3 --timeout=60 -q
+            -c -r -np -nH --cut-dirs=3 --connect-timeout=30 --read-timeout=60 --tries=3
             --directory-prefix="${CACHE_DIR}"
             -A "${accept_pattern}"
             --no-check-certificate

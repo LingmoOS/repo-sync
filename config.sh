@@ -94,5 +94,6 @@ SIGN=false
 # -nH         不创建主机名目录
 # --cut-dirs=3 裁剪 URL 路径层级（适应 OBS URL 结构）
 # --timeout   超时秒数
-# -q          安静模式（配合日志使用）
-WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --timeout=60 -q"
+# --timeout   超时秒数（连接/读取/总）
+# --tries     重试次数
+WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --connect-timeout=30 --read-timeout=60 --tries=3"
