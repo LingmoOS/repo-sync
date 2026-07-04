@@ -1,0 +1,240 @@
+# ============================================================
+# Lingmo Repo Sync — 生产同步工作流
+#
+# 在服务器上执行完整的 OBS → aptly 同步流程：
+#   1. 拉取 OBS 仓库到本地缓存（rsync）
+#   2. 重建 aptly Repository 并导入软件包
+#   3. 创建 Snapshot 并发布
+#   4. 推送到远端服务器（待实现）
+#
+# 触发器：
+#   - workflow_dispatch: 手动触发
+#   - schedule: 每 6 小时自动同步（生产环境按需调整）
+# ============================================================
+
+name: Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run 模式（只拉取，不导入/发布）"
+        type: boolean
+        default: false
+      repos:
+        description: "要同步的仓库（逗号分隔，空=全部）"
+        type: string
+        default: ""
+  schedule:
+    # 每 6 小时执行一次（UTC）
+    - cron: "0 */6 * * *"
+
+env:
+  # 部署路径
+  DEPLOY_DIR: /opt/lingmo-repo-sync
+  CACHE_DIR: /var/cache/lingmo-repo-sync
+  PUBLISH_ROOT: /var/www/aptly
+  LOG_DIR: /opt/lingmo-repo-sync/logs
+
+jobs:
+  sync:
+    name: OBS → aptly Sync
+    runs-on: ubuntu-latest
+
+    # 生产环境建议使用自托管 runner
+    # runs-on: [self-hosted, linux, x64]
+
+    steps:
+      # ======================================================
+      # Step 1: 拉取代码
+      # ======================================================
+      - name: 拉取 repo-sync 代码
+        uses: actions/checkout@v4
+        with:
+          path: repo-sync
+
+      # ======================================================
+      # Step 2: 安装依赖
+      # ======================================================
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            rsync \
+            aptly \
+            gnupg \
+            gzip \
+            bzip2 \
+            xz-utils \
+            ca-certificates
+
+      - name: 验证依赖
+        run: |
+          for cmd in rsync aptly gpg gzip bzip2 xz; do
+            echo -n "Checking $cmd ... "
+            command -v "$cmd" && echo "OK" || { echo "MISSING"; exit 1; }
+          done
+
+      # ======================================================
+      # Step 3: 配置
+      # ======================================================
+      - name: 写入配置文件
+        run: |
+          cat > repo-sync/config.sh << 'CONFIGEOF'
+          #!/usr/bin/env bash
+          OBS_URL="rsync://download.opensuse.org/repositories/home:/LingmoOS/Debian_13/"
+          CACHE_DIR="${{ env.CACHE_DIR }}"
+          LOG_DIR="${{ env.LOG_DIR }}"
+          REPO_NAMES=(
+            "lingmo-stable"
+            "lingmo-testing"
+            "lingmo-unstable"
+            "lingmo-experimental"
+          )
+          DISTRIBUTIONS=(
+            "stable"
+            "testing"
+            "unstable"
+            "experimental"
+          )
+          declare -A CODENAMES=(
+            ["stable"]="lithium"
+            ["testing"]="boron"
+          )
+          ARCHS=("amd64")
+          COMPONENT="main"
+          PUBLISH_ROOT="${{ env.PUBLISH_ROOT }}"
+          GPG_KEY="${{ secrets.GPG_KEY }}"
+          SIGN=true
+          RSYNC_OPTIONS="-av --delete --safe-links --timeout=120 --contimeout=60"
+          CONFIGEOF
+
+          chmod +x repo-sync/*.sh
+
+      - name: 创建必要目录
+        run: |
+          sudo mkdir -p "${{ env.CACHE_DIR }}"
+          sudo mkdir -p "${{ env.PUBLISH_ROOT }}"
+          sudo mkdir -p "${{ env.LOG_DIR }}"
+          sudo mkdir -p "${{ env.DEPLOY_DIR }}"
+
+      # ======================================================
+      # Step 4: GPG 密钥
+      # ======================================================
+      - name: 导入 GPG 密钥
+        if: ${{ secrets.GPG_KEY != '' }}
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import --batch
+          echo "GPG 密钥导入完成"
+          gpg --list-keys "${{ secrets.GPG_KEY }}"
+
+      # ======================================================
+      # Step 5: 拉取 OBS 仓库
+      # ======================================================
+      - name: 拉取 OBS 仓库（rsync）
+        id: download
+        run: |
+          cd repo-sync
+          echo "::group::OBS rsync 拉取"
+          bash download.sh
+          echo "::endgroup::"
+        continue-on-error: ${{ github.event.inputs.dry_run == 'true' }}
+
+      # ======================================================
+      # Step 6: 检查缓存内容
+      # ======================================================
+      - name: 检查缓存内容
+        run: |
+          echo "缓存目录: ${{ env.CACHE_DIR }}"
+          echo "文件数量: $(find ${{ env.CACHE_DIR }} -type f 2>/dev/null | wc -l)"
+          echo "磁盘占用: $(du -sh ${{ env.CACHE_DIR }} 2>/dev/null | cut -f1)"
+          echo ""
+          echo "=== .deb 文件 ==="
+          find ${{ env.CACHE_DIR }} -name '*.deb' -type f 2>/dev/null | head -10
+          echo ""
+          echo "=== .dsc 文件 ==="
+          find ${{ env.CACHE_DIR }} -name '*.dsc' -type f 2>/dev/null | head -10
+
+      # ======================================================
+      # Step 7: 检查 aptly 状态
+      # ======================================================
+      - name: 检查 aptly 状态
+        id: aptly-check
+        run: |
+          aptly db init 2>/dev/null || true
+          echo "=== 现有 Repository ==="
+          aptly repo list || echo "(无)"
+          echo "=== 现有 Snapshot ==="
+          aptly snapshot list || echo "(无)"
+          echo "=== 已发布 ==="
+          aptly publish list || echo "(无)"
+
+      # ======================================================
+      # Step 8: 导入并创建快照
+      # ======================================================
+      - name: 导入并创建 Snapshot
+        id: import
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd repo-sync
+          echo "::group::aptly 导入与快照"
+          bash import.sh
+          echo "::endgroup::"
+        continue-on-error: ${{ github.event.inputs.dry_run == 'true' }}
+
+      # ======================================================
+      # Step 9: 发布
+      # ======================================================
+      - name: 发布 Snapshot
+        id: publish
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          cd repo-sync
+          echo "::group::aptly 发布"
+          bash publish.sh
+          echo "::endgroup::"
+        continue-on-error: ${{ github.event.inputs.dry_run == 'true' }}
+
+      # ======================================================
+      # Step 10: 推送到远端服务器（待实现）
+      #
+      # TODO: 将发布后的仓库同步到：
+      #   - 备用镜像服务器
+      #   - Cloudflare R2
+      #   - Cloudflare Pages
+      #   - CDN 节点
+      # ======================================================
+      - name: 推送到远端服务器（占位）
+        id: push
+        run: |
+          echo "============================================"
+          echo "  [占位] 推送到远端服务器"
+          echo "============================================"
+          echo ""
+          echo "发布根目录: ${{ env.PUBLISH_ROOT }}"
+          echo "发布内容:"
+          ls -la "${{ env.PUBLISH_ROOT }}/" 2>/dev/null || echo "  (空)"
+          echo ""
+          echo "待实现推送目标:"
+          echo "  - rsync 到备用镜像服务器"
+          echo "  - rclone 到 Cloudflare R2"
+          echo "  - wrangler 到 Cloudflare Pages"
+          echo "  - rsync 到 CDN 源站"
+
+      # ======================================================
+      # Step 11: 同步完成摘要
+      # ======================================================
+      - name: 同步完成摘要
+        if: always()
+        run: |
+          echo "============================================"
+          echo "  Lingmo Repository Sync 完成"
+          echo "============================================"
+          echo ""
+          echo "OBS 同步: ${{ steps.download.outcome }}"
+          echo "导入快照: ${{ steps.import.outcome }}"
+          echo "发布: ${{ steps.publish.outcome }}"
+          echo "推送: ${{ steps.push.outcome }}"
+          echo ""
+          echo "日志: ${{ env.LOG_DIR }}"
+          ls -la "${{ env.LOG_DIR }}/" 2>/dev/null || echo "  无日志"
