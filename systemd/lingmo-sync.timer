@@ -1,0 +1,12 @@
+[Unit]
+Description=Lingmo OS Repository Sync Timer - hourly
+Documentation=https://github.com/LingmoOS/repo-sync
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=30s
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=Lingmo OS Repository Sync - OBS to aptly
+Documentation=https://github.com/LingmoOS/repo-sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lingmo-repo-sync/sync.sh
+User=root
+Group=root
+WorkingDirectory=/usr/local/bin/lingmo-repo-sync
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=3600
+IOSchedulingClass=idle
+CPUSchedulingPolicy=idle
+Nice=19
+
+# 安全加固
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/var/cache/lingmo-repo-sync /var/www/aptly
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
