@@ -110,15 +110,15 @@ aptly config show
 
 ## 首次发布
 
-### 方案一：全自动（推荐）
+### 运行：
 
 ```bash
 ./sync.sh
 ```
 
-一键完成：同步 -> 导入 -> 创建快照 -> 发布。
+该脚本将：同步 -> 导入 -> 创建快照 -> 发布。
 
-### 方案二：分步执行
+### 分步运行：
 
 ```bash
 # 1. 同步 OBS
@@ -162,7 +162,7 @@ gpg --export --armor YOUR_KEY_ID > /var/www/aptly/public-key.asc
 
 ```bash
 # 客户端添加公钥
-curl -fsSL https://repo.lingmo.dev/public-key.asc | gpg --dearmor > /etc/apt/trusted.gpg.d/lingmo.gpg
+curl -fsSL https://download.opensuse.org/repositories/home:LingmoOS/Debian_13/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/home_LingmoOS.gpg > /dev/null
 
 # 或
 apt-key add public-key.asc
@@ -355,7 +355,7 @@ aptly repo show lingmo-unstable
 aptly snapshot show lingmo-unstable-20260704-153000
 ```
 
-## 扩展指南
+## 扩展
 
 ### 添加新架构
 
