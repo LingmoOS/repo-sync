@@ -64,7 +64,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends \
-            wget \
+            lftp \
             aptly \
             gnupg \
             gzip \
@@ -110,7 +110,7 @@ jobs:
           PUBLISH_ROOT="${{ env.PUBLISH_ROOT }}"
           GPG_KEY="${{ secrets.GPG_KEY }}"
           SIGN=true
-          WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --connect-timeout=30 --read-timeout=60 --tries=3"
+          LFTP_OPTIONS="--continue --parallel=8 --verbose"
           CONFIGEOF
 
           chmod +x repo-sync/*.sh
@@ -143,33 +143,16 @@ jobs:
       # ======================================================
       # Step 5: 拉取 OBS 仓库
       # ======================================================
-      - name: 测试 OBS 可达性
-        id: connectivity
-        continue-on-error: true
-        run: |
-          echo "::group::测试 OBS 连接"
-          echo "DNS 解析:"
-          host download.opensuse.org 2>/dev/null || true
-          echo ""
-          echo "HTTP HEAD:"
-          curl -sI --connect-timeout 15 \
-            "https://download.opensuse.org/repositories/home:/LingmoOS/Debian_13/" | head -20
-          echo ""
-          echo "wget spider:"
-          wget --spider --timeout=15 \
-            "https://download.opensuse.org/repositories/home:/LingmoOS/Debian_13/" 2>&1 || echo "spider failed"
-          echo "::endgroup::"
-
-      - name: 拉取 OBS 仓库（wget）
+      - name: 拉取 OBS 仓库（lftp mirror）
         id: download
         continue-on-error: true
         run: |
           cd repo-sync
-          echo "::group::OBS wget 拉取"
+          echo "::group::OBS lftp mirror"
           bash download.sh
           echo "::endgroup::"
 
-      - name: 检查 wget 下载结果
+      - name: 检查 lftp 下载结果
         id: check-cache
         run: |
           CACHE="${{ env.CACHE_DIR }}"
@@ -177,7 +160,7 @@ jobs:
           echo "缓存文件数: $COUNT"
 
           if [ "$COUNT" -eq 0 ]; then
-            echo "OBS wget 下载失败，缓存为空，终止流程"
+            echo "OBS lftp 下载失败，缓存为空，终止流程"
             exit 1
           fi
 

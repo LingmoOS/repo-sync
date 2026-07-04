@@ -86,14 +86,11 @@ GPG_KEY=""
 SIGN=false
 
 # ============================================================
-# wget 选项
+# lftp 选项
 # ============================================================
-# -c          断点续传
-# -r          递归下载
-# -np         不进入父目录
-# -nH         不创建主机名目录
-# --cut-dirs=3 裁剪 URL 路径层级（适应 OBS URL 结构）
-# --timeout   超时秒数
-# --timeout   超时秒数（连接/读取/总）
-# --tries     重试次数
-WGET_OPTIONS="-c -r -np -nH --cut-dirs=3 --connect-timeout=30 --read-timeout=60 --tries=3"
+# --continue        断点续传
+# --parallel=8      并行下载数
+# --no-recursion    不递归子目录（mirror 自带递归）
+# --verbose         显示详情
+# --use-pget-n=8    每个文件分 8 块并行下载
+LFTP_OPTIONS="--continue --parallel=8 --verbose"
