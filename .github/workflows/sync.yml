@@ -36,9 +36,9 @@ on:
 env:
   # 部署路径
   DEPLOY_DIR: /opt/lingmo-repo-sync
-  CACHE_DIR: /var/cache/lingmo-repo-sync
-  PUBLISH_ROOT: /var/www/aptly
-  LOG_DIR: /opt/lingmo-repo-sync/logs
+  CACHE_DIR: /tmp/lingmo-cache
+  PUBLISH_ROOT: /tmp/lingmo-publish
+  LOG_DIR: /tmp/lingmo-logs
 
 jobs:
   sync:

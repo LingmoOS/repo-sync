@@ -36,7 +36,7 @@ lftp_mirror() {
     # 使用 heredoc 避免复杂的引号转义
     lftp << EOF
 open https://${host}
-mirror \
+    mirror \
     --continue \
     --parallel=8 \
     --verbose \
@@ -44,6 +44,7 @@ mirror \
     --exclude-glob=*.img \
     --exclude-glob=*.raw \
     --exclude-glob=index.html* \
+    --exclude-glob=*.mirrorlist \
     "${remote_path}" \
     "${CACHE_DIR}"
 quit
