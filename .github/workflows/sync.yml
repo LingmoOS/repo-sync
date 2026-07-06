@@ -40,6 +40,9 @@ env:
   PUBLISH_ROOT: /var/www/aptly
   LOG_DIR: /opt/lingmo-repo-sync/logs
 
+permissions:
+  contents: write
+
 jobs:
   sync:
     name: OBS → aptly Sync
