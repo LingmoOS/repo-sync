@@ -1,15 +1,28 @@
 # ============================================================
 # Lingmo Repo Sync — 生产同步工作流
 #
-# 在服务器上执行完整的 OBS → aptly 同步流程：
-#   1. 拉取 OBS 仓库到本地缓存（rsync）
+# 在服务器上执行完整的 OBS → aptly → R2 → Pages 同步流程：
+#   1. 拉取 OBS 仓库到本地缓存（lftp）
 #   2. 重建 aptly Repository 并导入软件包
-#   3. 创建 Snapshot 并发布
-#   4. 推送到远端服务器（待实现）
+#   3. 创建 Snapshot 并发布到本地
+#   4. 同步到 Cloudflare R2（对象存储）
+#   5. 生成目录索引并部署到 Cloudflare Pages
+#   6. 打包并上传到 GitHub Packages（备份）
 #
 # 触发器：
 #   - workflow_dispatch: 手动触发
 #   - schedule: 每 6 小时自动同步（生产环境按需调整）
+#
+# 所需 Secrets：
+#   - GPG_KEY: GPG 密钥 ID
+#   - GPG_PRIVATE_KEY: GPG 私钥（用于签名）
+#   - R2_ACCOUNT_ID: Cloudflare 账户 ID
+#   - R2_ACCESS_KEY_ID: R2 访问密钥 ID
+#   - R2_SECRET_ACCESS_KEY: R2 访问密钥
+#   - R2_BUCKET: R2 存储桶名称（可选，默认 lingmo-repo）
+#   - R2_PUBLIC_URL: R2 公开访问域名（可选）
+#   - CF_API_TOKEN: Cloudflare API Token（用于 Pages 部署）
+#   - CF_PAGES_PROJECT: Pages 项目名称（可选，默认 lingmo-repo-index）
 # ============================================================
 
 name: Sync
@@ -74,7 +87,13 @@ jobs:
             gzip \
             bzip2 \
             xz-utils \
-            ca-certificates
+            ca-certificates \
+            bc
+
+      - name: 安装 rclone（用于 R2 同步）
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+          rclone version
 
       - name: 验证依赖
         run: |
@@ -233,8 +252,63 @@ jobs:
           echo "::endgroup::"
 
       # ======================================================
-      # Step 11: 打包发布仓库
+      # Step 11: 同步到 Cloudflare R2
       # ======================================================
+      - name: 同步到 Cloudflare R2
+        id: r2-sync
+        if: ${{ steps.publish.outcome == 'success' && secrets.R2_ACCOUNT_ID != '' }}
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET || 'lingmo-repo' }}
+          R2_SYNC_ENABLED: true
+        run: |
+          cd repo-sync
+          echo "::group::R2 同步"
+          sudo -E bash r2_sync.sh
+          echo "::endgroup::"
+
+      # ======================================================
+      # Step 12: 生成并部署 Cloudflare Pages 索引
+      # ======================================================
+      - name: 安装 wrangler（Cloudflare Pages CLI）
+        if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        run: |
+          npm install -g wrangler
+          wrangler --version
+
+      - name: 生成 Pages 目录索引
+        id: pages-generate
+        if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        env:
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL || format('https://pub-{0}.r2.dev/lingmo-repo', secrets.R2_ACCOUNT_ID) }}
+          PAGES_ENABLED: true
+          PAGES_OUTPUT_DIR: /tmp/lingmo-pages
+          CF_PAGES_PROJECT: ${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}
+        run: |
+          cd repo-sync
+          echo "::group::生成 Pages 索引"
+          bash pages_index.sh --no-deploy
+          echo "::endgroup::"
+
+      - name: 部署到 Cloudflare Pages
+        id: pages-deploy
+        if: ${{ steps.pages-generate.outcome == 'success' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          cd repo-sync
+          echo "::group::部署 Pages"
+          wrangler pages deploy /tmp/lingmo-pages \
+            --project-name="${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}" \
+            --branch=main \
+            --commit-dirty=true
+          echo "::endgroup::"
+
+      # ======================================================
+      # Step 13: 打包发布仓库      # ======================================================
       - name: 打包发布仓库
         id: package
         if: ${{ steps.publish.outcome == 'success' }}
@@ -296,7 +370,7 @@ jobs:
           echo "上传完成 (${PKG_NAME}@${PKG_VERSION})"
 
       # ======================================================
-      # Step 13: 同步完成摘要
+      # Step 17: 同步完成摘要
       # ======================================================
       - name: 同步完成摘要
         if: always()
@@ -305,12 +379,14 @@ jobs:
           echo "  Lingmo Repository Sync 完成"
           echo "============================================"
           echo ""
-          echo "下载: ${{ steps.download.outcome }}"
-          echo "GPG: ${{ steps.gpg-setup.outputs.gpg_key_id || '未配置' }}"
-          echo "导入: ${{ steps.import.outcome }}"
-          echo "发布: ${{ steps.publish.outcome }}"
-          echo "推送: ${{ steps.push.outcome }}"
+          echo "下载:       ${{ steps.download.outcome }}"
+          echo "GPG:        ${{ steps.gpg-setup.outputs.gpg_key_id || '未配置' }}"
+          echo "导入:       ${{ steps.import.outcome }}"
+          echo "发布:       ${{ steps.publish.outcome }}"
+          echo "R2 同步:    ${{ steps.r2-sync.outcome || '跳过' }}"
+          echo "Pages 生成: ${{ steps.pages-generate.outcome || '跳过' }}"
+          echo "Pages 部署: ${{ steps.pages-deploy.outcome || '跳过' }}"
+          echo "推送:       ${{ steps.push.outcome }}"
           echo ""
-          echo "Release: ${{ steps.package.outputs.tag }}"
           echo "日志: ${{ env.LOG_DIR }}"
           ls -la "${{ env.LOG_DIR }}/" 2>/dev/null || echo "  无日志"
