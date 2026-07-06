@@ -244,7 +244,8 @@ jobs:
           PACKAGE="/tmp/${RELEASE_TAG}.tar.gz"
           echo "archive=${PACKAGE}" >> $GITHUB_OUTPUT
 
-          APTLY_PUBLIC=$(sudo aptly config show | grep -E "^  \"rootDir\"" | awk -F'"' '{print $4}')/public
+          APTLY_ROOT=$(sudo aptly config show | awk -F'"' '/rootDir/ {print $4}')
+          APTLY_PUBLIC="${APTLY_ROOT}/public"
           echo "aptly 发布目录: ${APTLY_PUBLIC}"
           ls -la "${APTLY_PUBLIC}" || echo "（目录为空）"
 
