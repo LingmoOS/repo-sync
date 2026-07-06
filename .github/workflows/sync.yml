@@ -247,7 +247,7 @@ jobs:
           APTLY_ROOT=$(sudo aptly config show | awk -F'"' '/rootDir/ {print $4}')
           APTLY_PUBLIC="${APTLY_ROOT}/public"
           echo "aptly 发布目录: ${APTLY_PUBLIC}"
-          ls -la "${APTLY_PUBLIC}" || echo "（目录为空）"
+          sudo ls -la "${APTLY_PUBLIC}" || echo "（目录为空）"
 
           echo "打包发布仓库: ${PACKAGE}"
           sudo tar czf "${PACKAGE}" -C "${APTLY_PUBLIC}" .
@@ -259,12 +259,15 @@ jobs:
       # ======================================================
       - name: 上传到 GitHub Release
         id: push
-        if: ${{ steps.publish.outcome == 'success' }}
+        if: ${{ steps.publish.outcome == 'success' && steps.package.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.package.outputs.tag }}"
           ARCHIVE="${{ steps.package.outputs.archive }}"
+
+          echo "Release 文件: ${ARCHIVE}"
+          ls -lh "${ARCHIVE}"
 
           echo "创建 Release: ${TAG}"
           gh release create "${TAG}" \
