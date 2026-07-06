@@ -37,7 +37,7 @@ trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 # 功能: 校验 R2 所需配置是否完整
 # ============================================================
 check_r2_config() {
-    local errors=0
+    local -i errors=0
 
     if [[ -z "${R2_ACCOUNT_ID:-}" ]]; then
         log_error "R2_ACCOUNT_ID 未设置"
@@ -174,7 +174,7 @@ sync_to_r2() {
 # ============================================================
 verify_r2_sync() {
     local rclone_dest="${RCLONE_REMOTE}:${R2_BUCKET}"
-    local errors=0
+    local -i errors=0
 
     log_info "校验 R2 同步结果..."
 
