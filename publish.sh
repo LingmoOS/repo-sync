@@ -73,7 +73,7 @@ publish_or_switch() {
             -distribution="${distribution}" \
             "${sign_args[@]}" \
             "${snapshot_name}" \
-            "${publish_root}"
+            "."
     else
         log_info "Distribution ${distribution} 未发布，执行首次发布"
 
@@ -81,8 +81,7 @@ publish_or_switch() {
             -distribution="${distribution}" \
             "${comp_args[@]}" \
             "${sign_args[@]}" \
-            "${snapshot_name}" \
-            "${publish_root}"
+            "${snapshot_name}"
     fi
 
     log_success "Distribution ${distribution} 发布成功 (${snapshot_name})"

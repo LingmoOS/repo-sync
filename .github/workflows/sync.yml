@@ -244,8 +244,12 @@ jobs:
           PACKAGE="/tmp/${RELEASE_TAG}.tar.gz"
           echo "archive=${PACKAGE}" >> $GITHUB_OUTPUT
 
+          APTLY_PUBLIC=$(sudo aptly config show | grep -E "^  \"rootDir\"" | awk -F'"' '{print $4}')/public
+          echo "aptly 发布目录: ${APTLY_PUBLIC}"
+          ls -la "${APTLY_PUBLIC}" || echo "（目录为空）"
+
           echo "打包发布仓库: ${PACKAGE}"
-          sudo tar czf "${PACKAGE}" -C "${{ env.PUBLISH_ROOT }}" .
+          sudo tar czf "${PACKAGE}" -C "${APTLY_PUBLIC}" .
 
           echo "包大小: $(du -h "${PACKAGE}" | cut -f1)"
 
