@@ -261,6 +261,7 @@ jobs:
           echo "创建 Release: ${TAG}"
           gh release create "${TAG}" \
             "${ARCHIVE}" \
+            --repo "${{ github.repository }}" \
             --title "Lingmo Repo Sync ${TAG}" \
             --notes "自动同步 OBS → aptly 仓库快照" \
             --target "${{ github.ref_name }}" \
