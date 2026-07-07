@@ -1,0 +1,12 @@
+name = "lingmo-repo-index"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+[[r2_buckets]]
+binding = "REPO_BUCKET"
+bucket_name = "lingmo-repo"
+
+[vars]
+REPO_TITLE = "Lingmo OS Repository"
+REPO_PUBLIC_URL = ""

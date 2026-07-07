@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 #
-# sync.sh - 主流程编排脚本
+# sync.sh - main orchestration script
 #
-# 完整的同步流程：
-#   ① 配置加载与验证
-#   ② 依赖检查
-#   ③ OBS -> 本地缓存同步（download.sh）
-#   ④ 导入 aptly Repository 并创建 Snapshot（import.sh）
-#   ⑤ 发布 Snapshot（publish.sh）
-#
-# 支持独立运行各子模块：
-#   ./download.sh   只执行同步
-#   ./import.sh     只执行导入
-#   ./publish.sh    只执行发布
+# Phases:
+#   1. Config validation and dependency checks
+#   2. OBS sync to local cache (download.sh)
+#   3. aptly import and snapshot creation (import.sh)
+#   4. aptly publish (publish.sh)
+#   5. Sync to Cloudflare R2 (r2_sync.sh, needs R2_SYNC_ENABLED=true)
+#   6. Generate Cloudflare Pages directory index (pages_index.sh, needs PAGES_ENABLED=true)
 #
 
 set -Eeuo pipefail
@@ -24,98 +20,77 @@ source "${SCRIPT_DIR}/lib.sh"
 
 trap 'handle_error $LINENO "$BASH_COMMAND"' ERR
 
-# ============================================================
-# 函数: print_banner
-# 功能: 打印启动横幅
-# ============================================================
 print_banner() {
     echo -e "${CYAN}"
     echo "============================================"
     echo "   Lingmo OS Repository Sync"
-    echo "   OBS -> aptly 全自动同步工具"
+    echo "   OBS -> aptly -> R2 -> Pages"
     echo "============================================"
     echo -e "${NC}"
 }
 
-# ============================================================
-# 函数: run_phase
-# 功能: 执行单个阶段，并统一记录起止时间
-# 参数:
-#   $1 - phase_name: 阶段名称
-#   $2 - phase_script: 子脚本路径
-#   剩余参数 - 传递给子脚本
-# ============================================================
 run_phase() {
     local phase_name="${1}"
     local phase_script="${2}"
     shift 2
 
-    log_info ">>>>>> 阶段开始: ${phase_name} <<<<<<"
-    log_info "调用: ${phase_script} $*"
+    log_info ">>>>>> Phase start: ${phase_name} <<<<<<"
+    log_info "Calling: ${phase_script} $*"
 
     if "${phase_script}" "$@"; then
-        log_success ">>>>>> 阶段完成: ${phase_name} <<<<<<"
+        log_success ">>>>>> Phase done: ${phase_name} <<<<<<"
         return 0
     else
-        log_error ">>>>>> 阶段失败: ${phase_name} <<<<<<"
+        log_error ">>>>>> Phase failed: ${phase_name} <<<<<<"
         return 1
     fi
 }
 
-# ============================================================
-# 函数: show_summary
-# 功能: 输出同步摘要
-# ============================================================
 show_summary() {
     local end_time
     end_time=$(date '+%Y-%m-%d %H:%M:%S')
 
     echo -e "${GREEN}"
     echo "============================================"
-    echo "   同步完成"
-    echo "   结束时间: ${end_time}"
-    echo "   日志文件: ${LOG_FILE}"
+    echo "   Sync complete"
+    echo "   End time : ${end_time}"
+    echo "   Log file : ${LOG_FILE}"
+    echo "   R2 sync  : ${R2_SYNC_ENABLED:-false}"
+    echo "   Pages    : ${PAGES_ENABLED:-false}"
     echo "============================================"
     echo -e "${NC}"
 }
 
-# ============================================================
-# 主函数
-# ============================================================
 main() {
     local start_time
     start_time=$(date '+%Y-%m-%d %H:%M:%S')
 
     print_banner
-
-    # 初始化日志
     ensure_log_dir
 
-    log_info "===== Lingmo Repository Sync 启动 ====="
-    log_info "开始时间: ${start_time}"
+    log_info "===== Lingmo Repository Sync start ====="
+    log_info "Start time: ${start_time}"
 
-    # 1. 配置验证
-    log_info "阶段 1/4: 配置验证与依赖检查"
+    # Phase 1: config validation
+    log_info "Phase 1/6: config validation and dependency checks"
     validate_config
     check_dependencies
 
-    # 2. 同步 OBS 到本地缓存
-    log_info "阶段 2/4: OBS 同步"
-    if ! run_phase "OBS 同步" "${SCRIPT_DIR}/download.sh"; then
-        log_error "OBS 同步失败，终止流程"
+    # Phase 2: OBS sync
+    log_info "Phase 2/6: OBS sync"
+    if ! run_phase "OBS sync" "${SCRIPT_DIR}/download.sh"; then
+        log_error "OBS sync failed, aborting"
         exit 1
     fi
 
-    # 3. 导入并创建快照
-    log_info "阶段 3/4: aptly 导入与快照"
+    # Phase 3: aptly import + snapshot
+    log_info "Phase 3/6: aptly import and snapshot"
     local snapshot_output
-    if ! snapshot_output=$(run_phase "aptly 导入" "${SCRIPT_DIR}/import.sh"); then
-        log_error "aptly 导入失败，终止流程"
+    if ! snapshot_output=$(run_phase "aptly import" "${SCRIPT_DIR}/import.sh"); then
+        log_error "aptly import failed, aborting"
         exit 1
     fi
 
-    # 从 import.sh 的输出中提取 snapshot 名称（最后几行）
-    # import.sh 的 stdout 包含多行 log + 最后几行 snapshot 名称
     local snapshot_names
     snapshot_names=$(echo "${snapshot_output}" \
         | grep -v '^\[\(INFO\|WARN\|ERROR\|SUCCESS\)\]' \
@@ -123,26 +98,44 @@ main() {
         | grep -v '^$' \
         || true)
 
-    # 4. 发布
-    log_info "阶段 4/4: aptly 发布"
+    # Phase 4: publish
+    log_info "Phase 4/6: aptly publish"
     if [[ -n "${snapshot_names}" ]]; then
         # shellcheck disable=SC2086
-        if ! run_phase "aptly 发布" "${SCRIPT_DIR}/publish.sh" ${snapshot_names}; then
-            log_error "aptly 发布失败"
+        if ! run_phase "aptly publish" "${SCRIPT_DIR}/publish.sh" ${snapshot_names}; then
+            log_error "aptly publish failed"
             exit 1
         fi
     else
-        log_warn "未检测到新创建的 Snapshot，跳过发布阶段"
-        # 尝试自动模式发布
-        if ! run_phase "aptly 发布(自动)" "${SCRIPT_DIR}/publish.sh"; then
-            log_error "aptly 发布失败"
+        log_warn "No new snapshots detected, attempting auto publish"
+        if ! run_phase "aptly publish (auto)" "${SCRIPT_DIR}/publish.sh"; then
+            log_error "aptly publish failed"
             exit 1
         fi
     fi
 
-    # 摘要
+    # Phase 5: R2 sync
+    log_info "Phase 5/6: Cloudflare R2 sync"
+    if [[ "${R2_SYNC_ENABLED:-false}" == "true" ]]; then
+        if ! run_phase "R2 sync" "${SCRIPT_DIR}/r2_sync.sh"; then
+            log_warn "R2 sync failed, continuing (local publish unaffected)"
+        fi
+    else
+        log_info "R2 sync disabled (R2_SYNC_ENABLED=false), skipping"
+    fi
+
+    # Phase 6: Pages index generation
+    log_info "Phase 6/6: Cloudflare Pages index generation"
+    if [[ "${PAGES_ENABLED:-false}" == "true" ]]; then
+        if ! run_phase "Pages index" "${SCRIPT_DIR}/pages_index.sh"; then
+            log_warn "Pages index generation failed, continuing"
+        fi
+    else
+        log_info "Pages index disabled (PAGES_ENABLED=false), skipping"
+    fi
+
     show_summary
-    log_success "===== Lingmo Repository Sync 完成 ====="
+    log_success "===== Lingmo Repository Sync complete ====="
 }
 
 main "$@"
