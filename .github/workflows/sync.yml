@@ -329,45 +329,52 @@ jobs:
       # ======================================================
       # Step 12: 上传到 GitHub Release (packages)
       # ======================================================
-      - name: 上传到 GitHub Packages
+      - name: 上传到 GitHub Release
         id: push
         if: ${{ steps.publish.outcome == 'success' && steps.package.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          TAG="${{ steps.package.outputs.tag }}"
           ARCHIVE="${{ steps.package.outputs.archive }}"
-          PKG_NAME="lingmo-repo-sync"
-          PKG_VERSION="$(date -u '+%Y%m%d-%H%M%S')"
 
-          echo "文件: ${ARCHIVE}"
+          echo "Release 文件: ${ARCHIVE}"
           ls -lh "${ARCHIVE}"
           SIZE=$(stat -c%s "${ARCHIVE}")
+          echo "文件大小: ${SIZE} bytes"
 
-          # GitHub Packages 单个版本限制 2GB，超过则分片上传为同一版本
+          # GitHub Release 单个文件限制 2GB，超过则分片上传
           if [ "${SIZE}" -gt 2147483648 ]; then
-            echo "文件超过 2GB，分片上传到 packages"
+            echo "文件超过 2GB，创建 Release 后分片上传"
+            gh release create "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --title "Lingmo Repo Sync ${TAG}" \
+              --notes "自动同步 OBS → aptly 仓库快照" \
+              --target "${{ github.ref_name }}" \
+              --latest=false
+
             split -b 1900M "${ARCHIVE}" "${ARCHIVE}.part-"
             for part in "${ARCHIVE}".part-*; do
-              fname=$(basename "${part}")
-              echo "上传分片: ${fname} ($(du -h "${part}" | cut -f1))"
-              gh api \
-                --method PUT \
-                -H "Content-Type: application/gzip" \
-                "/repos/${{ github.repository }}/packages/generic/${PKG_NAME}/${PKG_VERSION}/${fname}" \
-                --input "${part}"
+              echo "上传分片: $(basename "${part}") ($(du -h "${part}" | cut -f1))"
+              gh release upload "${TAG}" "${part}" \
+                --repo "${{ github.repository }}" \
+                --clobber
             done
+
             echo "清理分片文件"
             rm -f "${ARCHIVE}".part-*
           else
-            echo "上传完整文件到 packages"
-            gh api \
-              --method PUT \
-              -H "Content-Type: application/gzip" \
-              "/repos/${{ github.repository }}/packages/generic/${PKG_NAME}/${PKG_VERSION}/repo-sync.tar.gz" \
-              --input "${ARCHIVE}"
+            echo "创建 Release（含文件）: ${TAG}"
+            gh release create "${TAG}" \
+              "${ARCHIVE}" \
+              --repo "${{ github.repository }}" \
+              --title "Lingmo Repo Sync ${TAG}" \
+              --notes "自动同步 OBS → aptly 仓库快照" \
+              --target "${{ github.ref_name }}" \
+              --latest=false
           fi
 
-          echo "上传完成 (${PKG_NAME}@${PKG_VERSION})"
+          echo "Release ${TAG} 创建完成"
 
       # ======================================================
       # Step 17: 同步完成摘要
