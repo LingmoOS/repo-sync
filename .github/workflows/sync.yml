@@ -168,25 +168,6 @@ jobs:
           fi
         id: gpg-setup
 
-      - name: 导出并上传公钥
-        if: ${{ steps.gpg-setup.outputs.gpg_key_id != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          GPG_ID="${{ steps.gpg-setup.outputs.gpg_key_id }}"
-          gpg --armor --export "${GPG_ID}" > /tmp/lingmo.asc
-          echo "公钥已导出 (${GPG_ID})"
-
-          gh api \
-            --method PUT \
-            -H "Content-Type: text/plain" \
-            "/repos/${{ github.repository }}/packages/generic/lingmo-repo-sync/key/lingmo.asc" \
-            --input /tmp/lingmo.asc
-
-          echo "公钥已上传到 GitHub Packages"
-          echo "用户添加方式:"
-          echo "  curl -fsSL https://github.com/${{ github.repository }}/packages/generic/lingmo-repo-sync/key/lingmo.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lingmo.gpg"
-
       # ======================================================
       # Step 5: 拉取 OBS 仓库
       # ======================================================
@@ -269,6 +250,16 @@ jobs:
           echo "::group::aptly 发布"
           sudo bash publish.sh
           echo "::endgroup::"
+
+      - name: 复制公钥到仓库 keys/
+        if: ${{ steps.gpg-setup.outputs.gpg_key_id != '' }}
+        run: |
+          GPG_ID="${{ steps.gpg-setup.outputs.gpg_key_id }}"
+          APTLY_ROOT=$(sudo aptly config show | awk -F'"' '/rootDir/ {print $4}')
+          sudo mkdir -p "${APTLY_ROOT}/public/keys"
+          gpg --armor --export "${GPG_ID}" | sudo tee "${APTLY_ROOT}/public/keys/lingmo.asc" > /dev/null
+          echo "公钥已复制到仓库 keys/lingmo.asc"
+          echo "用户添加: curl -fsSL https://apt.lingmo.org/keys/lingmo.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lingmo.gpg"
 
       # ======================================================
       # Step 11: 同步到 Cloudflare R2
