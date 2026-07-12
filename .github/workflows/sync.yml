@@ -256,7 +256,8 @@ jobs:
       # ======================================================
       - name: 同步到 Cloudflare R2
         id: r2-sync
-        if: ${{ steps.publish.outcome == 'success' && secrets.R2_ACCOUNT_ID != '' }}
+        # if: ${{ steps.publish.outcome == 'success' && secrets.R2_ACCOUNT_ID != '' }}
+        if: ${{ steps.publish.outcome == 'success' }}
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -273,14 +274,16 @@ jobs:
       # Step 12: 生成并部署 Cloudflare Pages 索引
       # ======================================================
       - name: 安装 wrangler（Cloudflare Pages CLI）
-        if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        # if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        if: ${{ steps.publish.outcome == 'success' }}
         run: |
           npm install -g wrangler
           wrangler --version
 
       - name: 生成 Pages 目录索引
         id: pages-generate
-        if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        # if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+        if: ${{ steps.publish.outcome == 'success' }}
         env:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL || format('https://pub-{0}.r2.dev/lingmo-repo', secrets.R2_ACCOUNT_ID) }}
           PAGES_ENABLED: true
