@@ -290,35 +290,35 @@ jobs:
           npm install -g wrangler
           wrangler --version
 
-      - name: 生成 Pages 目录索引
-        id: pages-generate
-        # if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
-        if: ${{ steps.publish.outcome == 'success' }}
-        env:
-          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL || format('https://pub-{0}.r2.dev/lingmo-repo', secrets.R2_ACCOUNT_ID) }}
-          PAGES_ENABLED: true
-          PAGES_OUTPUT_DIR: /tmp/lingmo-pages
-          CF_PAGES_PROJECT: ${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}
-        run: |
-          cd repo-sync
-          echo "::group::生成 Pages 索引"
-          bash pages_index.sh --no-deploy
-          echo "::endgroup::"
+      # - name: 生成 Pages 目录索引
+      #   id: pages-generate
+      #   # if: ${{ steps.publish.outcome == 'success' && secrets.CF_API_TOKEN != '' }}
+      #   if: ${{ steps.publish.outcome == 'success' }}
+      #   env:
+      #     R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL || format('https://pub-{0}.r2.dev/lingmo-repo', secrets.R2_ACCOUNT_ID) }}
+      #     PAGES_ENABLED: true
+      #     PAGES_OUTPUT_DIR: /tmp/lingmo-pages
+      #     CF_PAGES_PROJECT: ${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}
+      #   run: |
+      #     cd repo-sync
+      #     echo "::group::生成 Pages 索引"
+      #     bash pages_index.sh --no-deploy
+      #     echo "::endgroup::"
 
-      - name: 部署到 Cloudflare Pages
-        id: pages-deploy
-        if: ${{ steps.pages-generate.outcome == 'success' }}
-        env:
-          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-        run: |
-          cd repo-sync
-          echo "::group::部署 Pages"
-          wrangler pages deploy /tmp/lingmo-pages \
-            --project-name="${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}" \
-            --branch=main \
-            --commit-dirty=true
-          echo "::endgroup::"
+      # - name: 部署到 Cloudflare Pages
+      #   id: pages-deploy
+      #   if: ${{ steps.pages-generate.outcome == 'success' }}
+      #   env:
+      #     CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      #   run: |
+      #     cd repo-sync
+      #     echo "::group::部署 Pages"
+      #     wrangler pages deploy /tmp/lingmo-pages \
+      #       --project-name="${{ secrets.CF_PAGES_PROJECT || 'lingmo-repo-index' }}" \
+      #       --branch=main \
+      #       --commit-dirty=true
+      #     echo "::endgroup::"
 
       # ======================================================
       # Step 13: 打包发布仓库      # ======================================================
