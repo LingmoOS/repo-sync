@@ -168,6 +168,25 @@ jobs:
           fi
         id: gpg-setup
 
+      - name: 导出并上传公钥
+        if: ${{ steps.gpg-setup.outputs.gpg_key_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          GPG_ID="${{ steps.gpg-setup.outputs.gpg_key_id }}"
+          gpg --armor --export "${GPG_ID}" > /tmp/lingmo.asc
+          echo "公钥已导出 (${GPG_ID})"
+
+          gh api \
+            --method PUT \
+            -H "Content-Type: text/plain" \
+            "/repos/${{ github.repository }}/packages/generic/lingmo-repo-sync/key/lingmo.asc" \
+            --input /tmp/lingmo.asc
+
+          echo "公钥已上传到 GitHub Packages"
+          echo "用户添加方式:"
+          echo "  curl -fsSL https://github.com/${{ github.repository }}/packages/generic/lingmo-repo-sync/key/lingmo.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lingmo.gpg"
+
       # ======================================================
       # Step 5: 拉取 OBS 仓库
       # ======================================================
