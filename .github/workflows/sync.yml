@@ -349,7 +349,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ARCHIVE="${{ steps.package.outputs.archive }}"
-          RELEASE_TAG="repo-sync-$(git log -1 --format=%cd --date=format:'%Y%m%d-%H%M%S')"
+          RELEASE_TAG="repo-sync-$(git -C repo-sync log -1 --format=%cd --date=format:'%Y%m%d-%H%M%S')"
           echo "Release 文件: ${ARCHIVE}"
           ls -lh "${ARCHIVE}"
           SIZE=$(stat -c%s "${ARCHIVE}")
