@@ -58,6 +58,14 @@ jobs:
           done
           echo "::endgroup::"
 
+  r2:
+    name: R2 Sync Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test R2 upload flow without network or credentials
+        run: bash tests/r2_sync.sh
+
   # ==========================================================
   # Job 2: 单元测试 (bats)
   # ==========================================================

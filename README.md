@@ -425,11 +425,74 @@ appstream-generator /var/www/aptly/dists/stable
 
 ### 同步到 Cloudflare R2
 
-可在 `sync.sh` 发布阶段后增加：
+R2 上传由 `r2_sync.sh` 完成，`sync.sh` 在本地发布成功后调用它。
+依赖 `rclone`；自动识别 aptly 发布目录还需要 `python3` 和 `aptly`。
+
+**GitHub Actions 配置**
+
+在仓库 Settings → Secrets and variables → Actions 中配置：
+
+| 类型 | 名称 | 内容 |
+|------|------|------|
+| Variable | `R2_SYNC_ENABLED` | `true`，启用上传 |
+| Secret | `R2_ACCOUNT_ID` | Cloudflare 账户 ID |
+| Secret | `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID |
+| Secret | `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key |
+| Secret | `R2_BUCKET` | 已创建的专用仓库桶，默认 `lingmo-repo` |
+
+凭据需具备目标桶的对象读取、写入和删除权限；脚本不会创建桶。
+使用 R2 的 S3 凭据，不能用 Pages 的 `CF_API_TOKEN` 代替。
+配置完成后运行 Sync 工作流。仅在本地发布成功、非 Pull Request 且开关开启时上传；
+工作流的 `dry_run` 输入只下载 OBS，因此会跳过 R2。缺少凭据或上传、校验失败会使工作流失败。
+同一工作流的运行串行执行，避免交错发布。
+
+**本地或服务器运行**
+
+通过环境变量注入凭据，不将真实密钥写入配置或提交到 Git：
 
 ```bash
-# 使用 rclone 同步到 R2
-rclone sync /var/www/aptly r2:lingmo-repo
+export R2_SYNC_ENABLED=true
+export R2_ACCOUNT_ID="你的账户 ID"
+export R2_ACCESS_KEY_ID="你的 Access Key ID"
+export R2_SECRET_ACCESS_KEY="你的 Secret Access Key"
+export R2_BUCKET="lingmo-repo"
+
+# 请使用执行 aptly 发布的同一个用户运行。
+bash r2_sync.sh --dry-run
+bash r2_sync.sh
+```
+
+未设置 `R2_SOURCE_DIR` 时，脚本解析当前用户 `aptly config show` 的 `rootDir`，
+同步其 `public/` 子目录。它不会假定 `PUBLISH_ROOT=/var/www/aptly` 就是实际输出位置。
+如果使用自定义 aptly filesystem endpoint，可显式设置：
+
+```bash
+export R2_SOURCE_DIR="/实际的发布目录"
+bash r2_sync.sh --dry-run
+```
+
+目录需要包含 `pool/`、`dists/`，以及配置中每个发行分支和别名的非空 `Release` 文件。
+`LOG_DIR` 默认是 `/var/log/lingmo-repo-sync`，普通用户可覆盖到有写入权限的目录。
+如果发布时使用 sudo，同步也要使用相同用户，并通过 sudo 的 `--preserve-env` 显式传递 R2 环境变量。
+
+**上传及校验方式**
+
+1. 上传 `pool/` 软件包。
+2. 上传索引、公钥及其他文件，暂不更新 `Release`、`Release.gpg`、`InRelease`。
+3. 检查包和索引在远端存在且大小一致；失败即停止。
+4. 同步 Release 元数据，并删除远端已不在本地的 Release/签名文件，避免旧 `InRelease` 继续生效。
+5. 下载 Release 元数据比较内容，失败返回非零状态。
+
+旧软件包和普通索引文件会保留，避免正在使用旧索引的客户端找不到包；这也意味着桶空间会增长，需另行安排清理。
+包和普通索引的检查只比较存在性和大小，不是逐字节完整性检查。
+多文件更新并非原子操作，发布过程中仍可能有短暂的索引不一致；同步期间应保持本地发布目录不变，避免手动并发运行。
+`--dry-run` 会模拟所有上传和元数据删除操作，跳过上传后校验，不写入远端对象。
+上传成功不自动启用公共访问或部署 Pages；客户端访问域名需要另行配置。
+
+测试（使用模拟 rclone，无需网络和真实凭据）：
+
+```bash
+bash tests/r2_sync.sh
 ```
 
 ### Cloudflare Pages 部署

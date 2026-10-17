@@ -53,6 +53,11 @@ env:
   PUBLISH_ROOT: /var/www/aptly
   LOG_DIR: /opt/lingmo-repo-sync/logs
 
+# 同一存储桶的发布串行执行，避免不同运行交错更新索引。
+concurrency:
+  group: repo-sync-production
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
@@ -88,7 +93,8 @@ jobs:
             bzip2 \
             xz-utils \
             ca-certificates \
-            bc
+            bc \
+            python3
 
       - name: 安装 rclone（用于 R2 同步）
         run: |
@@ -97,7 +103,7 @@ jobs:
 
       - name: 验证依赖
         run: |
-          for cmd in rsync aptly gpg gzip bzip2 xz; do
+          for cmd in lftp aptly gpg gzip bzip2 xz; do
             echo -n "Checking $cmd ... "
             command -v "$cmd" && echo "OK" || { echo "MISSING"; exit 1; }
           done
@@ -252,7 +258,7 @@ jobs:
           echo "::endgroup::"
 
       - name: 复制公钥到仓库 keys/
-        if: ${{ steps.gpg-setup.outputs.gpg_key_id != '' }}
+        if: ${{ steps.publish.outcome == 'success' && steps.gpg-setup.outputs.gpg_key_id != '' }}
         run: |
           GPG_ID="${{ steps.gpg-setup.outputs.gpg_key_id }}"
           APTLY_ROOT=$(sudo aptly config show | awk -F'"' '/rootDir/ {print $4}')
@@ -261,24 +267,25 @@ jobs:
           echo "公钥已复制到仓库 keys/lingmo.asc"
           echo "用户添加: curl -fsSL https://apt.lingmo.org/keys/lingmo.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/lingmo.gpg"
 
-      # # ======================================================
-      # # Step 11: 同步到 Cloudflare R2
-      # # ======================================================
-      # - name: 同步到 Cloudflare R2
-      #   id: r2-sync
-      #   # if: ${{ steps.publish.outcome == 'success' && secrets.R2_ACCOUNT_ID != '' }}
-      #   if: ${{ steps.publish.outcome == 'success' }}
-      #   env:
-      #     R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      #     R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      #     R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      #     R2_BUCKET: ${{ secrets.R2_BUCKET || 'lingmo-repo' }}
-      #     R2_SYNC_ENABLED: true
-      #   run: |
-      #     cd repo-sync
-      #     echo "::group::R2 同步"
-      #     sudo -E bash r2_sync.sh
-      #     echo "::endgroup::"
+      # ======================================================
+      # Step 11: 同步到 Cloudflare R2
+      # Repository Variables 中设置 R2_SYNC_ENABLED=true 后启用。
+      # ======================================================
+      - name: 同步到 Cloudflare R2
+        id: r2-sync
+        if: ${{ steps.publish.outcome == 'success' && github.event_name != 'pull_request' && vars.R2_SYNC_ENABLED == 'true' }}
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET || 'lingmo-repo' }}
+          R2_SYNC_ENABLED: 'true'
+        run: |
+          cd repo-sync
+          echo "::group::R2 同步"
+          # 和 publish.sh 使用同一个用户，自动读取 root 的 aptly rootDir/public。
+          sudo --preserve-env=R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_BUCKET,R2_SYNC_ENABLED bash r2_sync.sh
+          echo "::endgroup::"
 
       # ======================================================
       # Step 12: 生成并部署 Cloudflare Pages 索引

@@ -118,7 +118,8 @@ main() {
     log_info "Phase 5/6: Cloudflare R2 sync"
     if [[ "${R2_SYNC_ENABLED:-false}" == "true" ]]; then
         if ! run_phase "R2 sync" "${SCRIPT_DIR}/r2_sync.sh"; then
-            log_warn "R2 sync failed, continuing (local publish unaffected)"
+            log_error "R2 sync failed"
+            exit 1
         fi
     else
         log_info "R2 sync disabled (R2_SYNC_ENABLED=false), skipping"

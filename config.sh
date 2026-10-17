@@ -94,3 +94,14 @@ SIGN=false
 # --verbose         显示详情
 # --use-pget-n=8    每个文件分 8 块并行下载
 LFTP_OPTIONS="--continue --parallel=8 --verbose"
+
+# 日志目录，可通过环境变量覆盖。
+LOG_DIR="${LOG_DIR:-/var/log/lingmo-repo-sync}"
+
+# Cloudflare R2：密钥仅通过环境变量提供。
+R2_SYNC_ENABLED="${R2_SYNC_ENABLED:-false}"
+R2_BUCKET="${R2_BUCKET:-lingmo-repo}"
+RCLONE_REMOTE="${RCLONE_REMOTE:-lingmo_r2}"
+# 留空时读取当前用户的 aptly config show，使用 rootDir/public。
+# 自定义 aptly filesystem endpoint 时，显式填写其实际发布目录。
+R2_SOURCE_DIR="${R2_SOURCE_DIR:-}"
