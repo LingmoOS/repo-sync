@@ -135,6 +135,9 @@ jobs:
   integration:
     name: Integration Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     container:
       image: debian:trixie-slim
     steps:

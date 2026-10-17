@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
-import worker from '../dist/_worker.js/index.js'
+import worker from '../dist/_worker.js'
 
 const env = {
   REPO_BUCKET: {

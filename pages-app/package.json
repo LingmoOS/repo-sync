@@ -12,7 +12,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "dev:full": "npm run build && wrangler pages dev dist",
-    "build:functions": "wrangler pages functions build --outdir dist/_worker.js",
+    "build:functions": "wrangler pages functions build --outdir .functions-build && node scripts/copy-worker.mjs",
     "format": "prettier --write src lib shared functions tests e2e playwright.config.ts",
     "test:bundle": "node --test tests/bundle.test.mjs"
   },
