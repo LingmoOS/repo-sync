@@ -23,9 +23,7 @@ jobs:
       run:
         working-directory: pages-app
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT || 'lingmo-packages' }}
+      PAGES_URL: ${{ vars.PAGES_URL || format('https://{0}.pages.dev', vars.CF_PAGES_PROJECT || 'lingmo-packages') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,18 +31,10 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: pages-app/package-lock.json
-      - name: Validate deployment configuration
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CF_API_TOKEN'; exit 1; }
-          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing R2_ACCOUNT_ID'; exit 1; }
       - run: npm ci
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
-      - name: Deploy website and Pages Functions
-        run: |
-          set -o pipefail
-          npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --branch=main 2>&1 | tee "$RUNNER_TEMP/pages-deploy.log"
-      - name: Verify deployed package APIs
-        run: node scripts/verify-deployment.mjs --log "$RUNNER_TEMP/pages-deploy.log"
+      - name: Verify Git-integrated Pages deployment
+        run: node scripts/verify-deployment.mjs "$PAGES_URL"

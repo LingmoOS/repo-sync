@@ -9,13 +9,22 @@ export async function verifyDeployment(origin, request = fetch) {
       headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
       signal: AbortSignal.timeout(15000),
     })
-    if (!(response.headers.get('content-type') || '').includes('application/json'))
+    if (!(response.headers.get('content-type') || '').includes('application/json')) {
+      const contentType = response.headers.get('content-type') || 'unknown content type'
       throw new Error(
         path +
           ' did not return JSON (HTTP ' +
           response.status +
-          '); check the deployed Worker and API routes',
+          ', ' +
+          contentType +
+          ')' +
+          (contentType.includes('text/html')
+            ? '; the deployment served the SPA HTML fallback, so Pages Functions/_worker.js did not run' +
+              ' (check that the build outputs _worker.js, the project is not over the Workers Free' +
+              ' Functions quota, and Fail open is not serving assets)'
+            : ''),
       )
+    }
     const data = await response.json()
     if (!response.ok) throw new Error(path + ': ' + (data.error || response.status))
     return data
@@ -47,15 +56,19 @@ async function main() {
   }
   if (!url || !/^https:\/\//.test(url))
     throw new Error('Provide a deployment HTTPS URL or --log <wrangler log>')
-  for (let attempt = 1; attempt <= 6; attempt++) {
+  const maxAttempts = 36
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const result = await verifyDeployment(url)
       console.log('Deployment API verified:', url, JSON.stringify(result))
       return
     } catch (error) {
-      if (attempt === 6) throw error
-      console.warn('Deployment not ready (' + attempt + '/6):', error.message)
-      await delay(5000)
+      if (attempt === maxAttempts) throw error
+      console.warn(
+        'Git-integrated deployment not ready (' + attempt + '/' + maxAttempts + '):',
+        error.message,
+      )
+      await delay(10000)
     }
   }
 }

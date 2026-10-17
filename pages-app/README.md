@@ -25,7 +25,7 @@ npm run test:e2e
 
 ## Cloudflare Pages 部署
 
-当前 Cloudflare 项目 `lingmo-repo-index` 是 Direct Upload 项目。Cloudflare Pages 高级 Worker 模式需要 Git 集成项目；Direct Upload 项目不能转换类型。因此 API 无法在当前项目中接管请求，需要另建项目。保留旧项目即可。
+当前 Cloudflare 项目 `lingmo-repo-index` 是 Direct Upload 项目，之后无法转换为 Git 集成项目。新版站点使用 Git 集成项目 `lingmo-packages`：Cloudflare 负责构建，并把输出目录里的 `_worker.js` 作为 Pages Functions（高级模式）一起发布。保留旧项目即可。
 
 1. Cloudflare Dashboard → Workers & Pages → Create application → Pages → **Connect to Git**。
 2. 连接 GitHub 仓库 `LingmoOS/repo-sync`，新项目名设为 `lingmo-packages`，生产分支选 `main`。
@@ -41,10 +41,34 @@ npm run test:e2e
 | Variable | `PAGES_PROJECT_MODE` | `git` |
 | Variable | `CF_PAGES_PROJECT` | `lingmo-packages` |
 
-6. Git 集成会自动构建。若要由 **Package Website** 工作流统一负责部署和线上 API 检查，请在 Pages 项目中关闭自动部署。
-7. 部署成功后，从 Cloudflare Pages 项目取得地址，通常为 `https://lingmo-packages.pages.dev`。
+6. 保持 Pages 的 Git 自动部署开启。Cloudflare 会构建并发布 `_worker.js`；GitHub 的 **Package Website** 工作流会运行测试，等待 Git 部署完成后检查 API。不要在这个项目上用 `wrangler pages deploy` 手动上传：手动部署会覆盖生产环境的 Git 部署（部署源变成 `ad_hoc`），排查问题时容易混淆。
+7. 网站地址通常为 `https://lingmo-packages.pages.dev`。如使用自定义域名，可设置 GitHub Variable `PAGES_URL` 为完整的 HTTPS 地址。
 
 设置 `PAGES_PROJECT_MODE=git` 前，仓库工作流不会向旧 Direct Upload 项目发布错误的 API Worker。
+
+## 部署后自检
+
+`npm run build` 必须产出 `dist/_worker.js`，`scripts/copy-worker.mjs` 会校验编译结果里包含 API 路由，`tests/bundle.test.mjs` 会直接调用打包后的 Worker。
+
+```bash
+# 本地用真实 Pages 运行时验证 Worker（R2 由 Wrangler 模拟）
+npx wrangler pages dev dist
+curl -i http://127.0.0.1:8788/api/catalog        # 期望 200 + application/json
+
+# 线上检查（CI 用的同一个脚本，返回非 JSON 会说明原因并重试）
+node scripts/verify-deployment.mjs https://lingmo-packages.pages.dev
+curl -i https://lingmo-packages.pages.dev/api/catalog
+```
+
+## 故障排查：页面提示“暂时无法加载 / 网站数据服务暂时不可用”
+
+这个提示来自 `src/useApi.ts`：`/api/catalog` 没有返回 JSON 时就会显示错误页，并在提示里带上 HTTP 状态和实际内容类型。
+
+1. **接口返回 `text/html`（index.html）**：请求落到了 Pages 的 SPA 回退，说明这个部署没有执行 Pages Functions / `_worker.js`。Pages 在没有顶层 `404.html` 时会把未命中的路径回退到 `/`，所以 `/api/*` 也会拿到 `index.html`。
+   - 构建日志里找不到 `Found _worker.js in output directory. Uploading.`：检查构建命令是否为 `npm run build`、输出目录是否为 `dist`、根目录是否为 `pages-app`。
+   - 构建日志里有 `_worker.js`、部署记录 `uses_functions = true`，但接口仍是 HTML：说明 Cloudflare 侧把 Functions 请求退回了静态资源。Workers 免费计划的 Pages Functions 有每日额度（10 万次请求），额度用尽时默认 **Fail open**，直接返回静态资源。到 Workers & Pages → 项目 → 用量/设置确认；等额度在 UTC 00:00 重置，或升级到 Workers Paid。
+   - 本地 `npx wrangler pages dev dist` 正常、线上仍返回 HTML：问题在 Cloudflare 账号/项目侧，带着部署 ID、构建日志和上面的 `curl -i` 结果提交工单。
+2. **接口返回 JSON 错误（503）**：Functions 正常，是 R2 里没有发布索引，或项目没有配置 `REPO_BUCKET` binding。响应里的 `error` 字段会直接说明。
 
 ## API 与数据
 

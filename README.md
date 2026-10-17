@@ -501,4 +501,6 @@ bash tests/r2_sync.sh
 
 当前 Cloudflare Pages 项目 `lingmo-repo-index` 是 Direct Upload 项目，而 Pages 高级 Worker 模式需要 Git 集成项目；现有项目无法转换。请新建 Git 集成项目 `lingmo-packages`，连接仓库 `LingmoOS/repo-sync`，根目录设为 `pages-app`，构建命令 `npm run build`，输出目录 `dist`，并将 `REPO_BUCKET` 指向 R2 桶 `lingmo-repo`。
 
-GitHub Actions 需设置 Variable `PAGES_ENABLED=true`、`PAGES_PROJECT_MODE=git`、`CF_PAGES_PROJECT=lingmo-packages`，以及 Secrets `CF_API_TOKEN`、`R2_ACCOUNT_ID`。如果不想双重部署，可在 Pages 项目中关闭 Git 自动部署，由工作流负责部署及 API 检查。更多说明见 [pages-app/README.md](pages-app/README.md)。
+GitHub Actions 需设置 Variable `PAGES_ENABLED=true`、`PAGES_PROJECT_MODE=git`、`CF_PAGES_PROJECT=lingmo-packages`，以及 Secrets `CF_API_TOKEN`、`R2_ACCOUNT_ID`。保持 Pages 的 Git 自动部署开启；GitHub 工作流运行测试并等待 Git 部署完成后验证接口。设置变量 `PAGES_URL` 可覆盖默认的 `https://lingmo-packages.pages.dev`。不要在该项目中使用 Wrangler 手动上传。更多说明见 [pages-app/README.md](pages-app/README.md)。
+
+页面显示“暂时无法加载 / 网站数据服务暂时不可用”时，说明 `/api/catalog` 没有返回 JSON。先执行 `curl -i https://lingmo-packages.pages.dev/api/catalog`：返回 `text/html` 表示请求落到 Pages 的 SPA 回退、部署没有执行 `_worker.js`；返回带 `error` 的 JSON 则是 R2 索引或 binding 问题。部署与排障细节见 [pages-app/README.md](pages-app/README.md) 的“故障排查”一节。
