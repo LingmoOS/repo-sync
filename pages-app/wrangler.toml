@@ -8,5 +8,5 @@ binding = "REPO_BUCKET"
 bucket_name = "lingmo-repo"
 
 [vars]
-REPO_TITLE = "Lingmo OS Repository"
+REPO_TITLE = "Lingmo Packages"
 REPO_PUBLIC_URL = ""

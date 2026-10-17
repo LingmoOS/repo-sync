@@ -58,6 +58,31 @@ jobs:
           done
           echo "::endgroup::"
 
+  frontend:
+    name: Package Search UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pages-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: pages-app/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:functions
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-test-results
+          path: pages-app/test-results/
+
   r2:
     name: R2 Sync Tests
     runs-on: ubuntu-latest

@@ -1,36 +1,29 @@
-import { Hono } from 'hono'
-import { handle } from 'hono/cloudflare-pages'
+import { safeObjectKey } from '../../lib/packages.ts'
 
-type Env = {
-  REPO_BUCKET: R2Bucket
-  REPO_TITLE: string
-  REPO_PUBLIC_URL: string
-}
-
-const app = new Hono<{ Bindings: Env }>()
-
-app.get('/api/list', async (c) => {
-  const prefix = c.req.query('prefix') ?? ''
-  const delimiter = c.req.query('delimiter') ?? '/'
-
+export const onRequestGet: PagesFunction<{ REPO_BUCKET: R2Bucket }> = async ({ request, env }) => {
+  const params = new URL(request.url).searchParams
+  const prefix = params.get('prefix') || ''
+  if (prefix && !safeObjectKey(prefix))
+    return Response.json({ error: '目录路径无效。' }, { status: 400 })
   try {
-    const result = await c.env.REPO_BUCKET.list({ prefix, delimiter, limit: 1000 })
-
-    return c.json({
+    const result = await env.REPO_BUCKET.list({
       prefix,
-      objects: result.objects.map((o) => ({
-        key: o.key,
-        size: o.size,
-        uploaded: o.uploaded.toISOString(),
-        etag: o.httpEtag,
-        contentType: o.httpMetadata?.contentType ?? '',
-      })),
-      dirs: result.delimitedPrefixes,
-      truncated: result.truncated,
+      delimiter: '/',
+      limit: 200,
+      cursor: params.get('cursor') || undefined,
     })
-  } catch (err) {
-    return c.json({ error: String(err) }, 500)
+    return Response.json(
+      {
+        prefix,
+        objects: result.objects
+          .filter((o) => safeObjectKey(o.key))
+          .map((o) => ({ key: o.key, size: o.size, uploaded: o.uploaded.toISOString() })),
+        dirs: result.delimitedPrefixes.filter(safeObjectKey),
+        cursor: result.truncated ? result.cursor : undefined,
+      },
+      { headers: { 'Cache-Control': 'public, max-age=30' } },
+    )
+  } catch {
+    return Response.json({ error: '暂时无法读取此目录。' }, { status: 503 })
   }
-})
-
-export const onRequest = handle(app)
+}

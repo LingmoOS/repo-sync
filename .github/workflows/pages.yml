@@ -1,0 +1,47 @@
+name: Package Website
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "pages-app/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-website-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pages-app
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      PAGES_PROJECT: ${{ vars.CF_PAGES_PROJECT || 'lingmo-repo-index' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: pages-app/package-lock.json
+      - name: Validate deployment configuration
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo 'Missing CF_API_TOKEN'; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo 'Missing R2_ACCOUNT_ID'; exit 1; }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run build:functions
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Deploy website and Pages Functions
+        run: npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --branch=main

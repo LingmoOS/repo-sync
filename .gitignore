@@ -1,0 +1,8 @@
+pages-app/node_modules/
+pages-app/dist/
+pages-app/.wrangler/
+pages-app/.functions-build/
+pages-app/test-results/
+pages-app/playwright-report/
+pages-app/.dev.vars
+pages-app/.dev.vars.*

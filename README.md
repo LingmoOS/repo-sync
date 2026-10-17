@@ -495,11 +495,12 @@ bash r2_sync.sh --dry-run
 bash tests/r2_sync.sh
 ```
 
-### Cloudflare Pages 部署
+### Cloudflare Pages 软件包搜索网站
 
-可在 `sync.sh` 发布阶段后增加：
+`pages-app/` 提供类似软件包目录站的前端：包名/描述/源码名搜索、发行分支和架构筛选、软件包详情与下载、APT 接入指南、原始仓库浏览。
 
-```bash
-# 使用 wrangler 部署
-wrangler pages publish /var/www/aptly
-```
+网站通过 Pages Functions 的 `REPO_BUCKET` 绑定读取 R2 中的真实 Release 和 Packages 索引；软件包同步成功后，无需重新部署页面来更新数据。
+
+启用 GitHub Variable `PAGES_ENABLED=true`，配置 Secret `CF_API_TOKEN`（Cloudflare Pages 编辑权限），复用已有 `R2_ACCOUNT_ID`，并创建 Pages 项目 `lingmo-repo-index` 后，运行 **Package Website** 工作流。
+
+详细部署、R2 绑定、域名和本地验证步骤见 [pages-app/README.md](pages-app/README.md)。旧 `pages_index.sh` 只生成静态文件列表，不提供软件包元数据搜索。
