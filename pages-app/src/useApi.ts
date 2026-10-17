@@ -13,6 +13,10 @@ export function useApi<T>(url: string | null) {
     if (!url) return () => controller.abort()
     fetch(url, { signal: controller.signal })
       .then(async (response) => {
+        const contentType = response.headers.get('content-type') || ''
+        if (!contentType.includes('application/json')) {
+          throw new Error('网站数据服务暂时不可用，请稍后重试。')
+        }
         const body = (await response.json()) as T & { error?: string }
         if (!response.ok) throw new Error(body.error || '请求失败，请稍后重试。')
         return body as T

@@ -5,15 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && npm run build:functions && npm run test:bundle",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name lingmo-repo-index",
     "types": "wrangler types",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "dev:full": "npm run build && wrangler pages dev dist",
-    "build:functions": "wrangler pages functions build --outdir .functions-build",
-    "format": "prettier --write src lib shared functions tests e2e playwright.config.ts"
+    "build:functions": "wrangler pages functions build --outdir dist/_worker.js",
+    "format": "prettier --write src lib shared functions tests e2e playwright.config.ts",
+    "test:bundle": "node --test tests/bundle.test.mjs"
   },
   "dependencies": {
     "hono": "^4.4.0",

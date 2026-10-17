@@ -182,3 +182,20 @@ test('mobile navigation and search fit the viewport', async ({ page }) => {
   await mkdir('test-results/previews', { recursive: true })
   await page.screenshot({ path: 'test-results/previews/mobile.png', fullPage: true })
 })
+
+test('HTML returned by an API produces a clear error and remains retryable', async ({ page }) => {
+  let html = true
+  await page.route('**/api/catalog', (route) =>
+    html
+      ? route.fulfill({ contentType: 'text/html', body: '<!DOCTYPE html><div id="root"></div>' })
+      : route.fulfill({
+          json: { title: 'Lingmo Packages', suites: ['stable'], publicUrl: '', signingKey: true },
+        }),
+  )
+  await page.goto('/')
+  await expect(page.getByRole('alert')).toContainText('网站数据服务暂时不可用')
+  await expect(page.getByRole('alert')).not.toContainText('Unexpected token')
+  html = false
+  await page.getByRole('button', { name: '重新加载' }).click()
+  await expect(page.locator('.package-row')).toHaveCount(20)
+})

@@ -27,7 +27,6 @@
 npm ci
 npm test
 npm run build
-npm run build:functions
 npm run dev:full
 ```
 
@@ -64,7 +63,11 @@ npx wrangler pages project create lingmo-repo-index --production-branch main
 5. 运行 Package Website 工作流。工作流会测试、构建并部署网站和 Functions；网站代码更新后也可自动触发。R2 同步仍由原来的 Sync 工作流负责。
 6. 使用 Pages 项目的 pages.dev 地址访问；如需独立域名，在 Pages 项目中绑定，例如 packages.example.org。已有的 apt.example.org 可以继续指向 R2。
 
-不要把 dist 目录单独上传到 R2 来运行此网站。它包含动态检索 API，部署时必须包含 functions/ 并绑定 REPO_BUCKET。Wrangler 会读取 wrangler.toml 的绑定和变量；修改这些配置后需重新部署。
+npm run build 会将前端、_routes.json 和可执行的 dist/_worker.js/index.js 一起生成，并测试编译后的接口路由。部署到 Pages 时必须保留整个 dist/_worker.js 目录并绑定 REPO_BUCKET；不要只上传 HTML/CSS/JS 静态资源，也不要将网站上传到 R2 来代替 Pages。Wrangler 会读取 wrangler.toml 的绑定和变量；修改这些配置后需重新部署。
+
+工作流部署后会直接检查新部署地址的 /api/catalog、软件包搜索和 Release 下载。HTTP 200 但返回 HTML 也会判定为失败，避免只凭上传成功就认为接口可用。
+
+若使用 Cloudflare Git 集成，根目录设为 pages-app，构建命令 npm run build，输出目录 dist；Node.js 版本使用 24。
 
 R2 上传成功不代表网站已经部署。上述 PAGES_ENABLED 是 GitHub Repository Variable；与旧 pages_index.sh 的同名 Shell 环境变量属于不同流程。本网站不需要启用旧静态目录索引生成器。
 
@@ -73,7 +76,6 @@ R2 上传成功不代表网站已经部署。上述 PAGES_ENABLED 是 GitHub Rep
 ```bash
 npm test
 npm run build
-npm run build:functions
 npx playwright install chromium
 npm run test:e2e
 ```

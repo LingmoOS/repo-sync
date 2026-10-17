@@ -40,8 +40,11 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npm run build:functions
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Deploy website and Pages Functions
-        run: npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --branch=main
+        run: |
+          set -o pipefail
+          npx wrangler pages deploy dist --project-name="$PAGES_PROJECT" --branch=main 2>&1 | tee "$RUNNER_TEMP/pages-deploy.log"
+      - name: Verify deployed package APIs
+        run: node scripts/verify-deployment.mjs --log "$RUNNER_TEMP/pages-deploy.log"
