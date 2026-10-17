@@ -1,5 +1,5 @@
 {
-  "name": "lingmo-repo-index",
+  "name": "lingmo-packages",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build && npm run build:functions && npm run test:bundle",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name lingmo-repo-index",
+    "deploy": "npm run build && wrangler pages deploy dist --project-name=${CF_PAGES_PROJECT:-lingmo-packages}",
     "types": "wrangler types",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:e2e": "playwright test",

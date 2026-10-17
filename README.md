@@ -497,10 +497,8 @@ bash tests/r2_sync.sh
 
 ### Cloudflare Pages 软件包搜索网站
 
-`pages-app/` 提供类似软件包目录站的前端：包名/描述/源码名搜索、发行分支和架构筛选、软件包详情与下载、APT 接入指南、原始仓库浏览。
+网站包含软件包搜索、分支和架构筛选、软件包详情、下载及 APT 接入说明；API 从 R2 读取真实 Release 和 Packages 索引。
 
-网站通过 Pages Functions 的 `REPO_BUCKET` 绑定读取 R2 中的真实 Release 和 Packages 索引；软件包同步成功后，无需重新部署页面来更新数据。
+当前 Cloudflare Pages 项目 `lingmo-repo-index` 是 Direct Upload 项目，而 Pages 高级 Worker 模式需要 Git 集成项目；现有项目无法转换。请新建 Git 集成项目 `lingmo-packages`，连接仓库 `LingmoOS/repo-sync`，根目录设为 `pages-app`，构建命令 `npm run build`，输出目录 `dist`，并将 `REPO_BUCKET` 指向 R2 桶 `lingmo-repo`。
 
-启用 GitHub Variable `PAGES_ENABLED=true`，配置 Secret `CF_API_TOKEN`（Cloudflare Pages 编辑权限），复用已有 `R2_ACCOUNT_ID`，并创建 Pages 项目 `lingmo-repo-index` 后，运行 **Package Website** 工作流。
-
-详细部署、R2 绑定、域名和本地验证步骤见 [pages-app/README.md](pages-app/README.md)。旧 `pages_index.sh` 只生成静态文件列表，不提供软件包元数据搜索。
+GitHub Actions 需设置 Variable `PAGES_ENABLED=true`、`PAGES_PROJECT_MODE=git`、`CF_PAGES_PROJECT=lingmo-packages`，以及 Secrets `CF_API_TOKEN`、`R2_ACCOUNT_ID`。如果不想双重部署，可在 Pages 项目中关闭 Git 自动部署，由工作流负责部署及 API 检查。更多说明见 [pages-app/README.md](pages-app/README.md)。
